@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: nexora
+    runtime: docker
+    healthCheckPath: /healthz/
+    dockerCommand: gunicorn B2B_SaaS_Platform.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --access-logfile -
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: nexora-db
+          property: database
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: nexora-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: nexora-db
+          property: password
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: nexora-db
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: nexora-db
+          property: port
+      - key: REDIS_URL
+        sync: false
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false
+      - key: SITE_URL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_ID
+        sync: false
+      - key: BILLING_DEMO_MODE
+        value: "false"
+databases:
+  - name: nexora-db
+    databaseName: saas_platform
+    user: saas_app
