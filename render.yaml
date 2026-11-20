@@ -2,6 +2,7 @@ services:
   - type: web
     name: nexora
     runtime: docker
+    plan: free
     healthCheckPath: /healthz/
     dockerCommand: gunicorn Nexora.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --access-logfile -
     preDeployCommand: python manage.py migrate --noinput
@@ -48,3 +49,4 @@ databases:
   - name: nexora-db
     databaseName: saas_platform
     user: saas_app
+    plan: free

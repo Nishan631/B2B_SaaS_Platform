@@ -112,14 +112,30 @@ if USE_SQLITE:
         }
     }
 else:
+    db_url = os.environ.get('DATABASE_URL')
+    if db_url:
+        from urllib.parse import urlparse, unquote
+        parsed = urlparse(db_url)
+        pg_name = parsed.path.lstrip('/')
+        pg_user = unquote(parsed.username) if parsed.username else ''
+        pg_password = unquote(parsed.password) if parsed.password else ''
+        pg_host = parsed.hostname or '127.0.0.1'
+        pg_port = str(parsed.port or 5432)
+    else:
+        pg_name = os.environ.get('POSTGRES_DB', 'saas_platform')
+        pg_user = os.environ.get('POSTGRES_USER', 'saas_app')
+        pg_password = os.environ.get('POSTGRES_PASSWORD', '')
+        pg_host = os.environ.get('POSTGRES_HOST', '127.0.0.1')
+        pg_port = os.environ.get('POSTGRES_PORT', '5432')
+
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.environ.get('POSTGRES_DB', 'saas_platform'),
-            'USER': os.environ.get('POSTGRES_USER', 'saas_app'),
-            'PASSWORD': os.environ.get('POSTGRES_PASSWORD', ''),
-            'HOST': os.environ.get('POSTGRES_HOST', '127.0.0.1'),
-            'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+            'NAME': pg_name,
+            'USER': pg_user,
+            'PASSWORD': pg_password,
+            'HOST': pg_host,
+            'PORT': pg_port,
             'CONN_MAX_AGE': 60,
             'CONN_HEALTH_CHECKS': True,
             'OPTIONS': {'connect_timeout': 5},
