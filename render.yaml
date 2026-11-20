@@ -4,6 +4,7 @@ services:
     runtime: docker
     healthCheckPath: /healthz/
     dockerCommand: gunicorn Nexora.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --access-logfile -
+    preDeployCommand: python manage.py migrate --noinput
     envVars:
       - key: DJANGO_DEBUG
         value: "false"
