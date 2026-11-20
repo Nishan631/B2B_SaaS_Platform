@@ -38,9 +38,22 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'unsafe-development-key-change-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', 'False').lower() == 'true'
 
-ALLOWED_HOSTS = [host for host in os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if host]
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,.onrender.com').split(',') if host.strip()]
+if '.onrender.com' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('.onrender.com')
 if (DEBUG or TESTING) and 'testserver' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append('testserver')
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.onrender.com',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
+]
+site_url = os.environ.get('SITE_URL')
+if site_url:
+    clean_site_url = site_url.strip().rstrip('/')
+    if clean_site_url and clean_site_url not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(clean_site_url)
 
 
 # Application definition
@@ -141,15 +154,23 @@ else:
             'OPTIONS': {'connect_timeout': 5},
         }
     }
-    REDIS_URL = os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379/1')
-    CACHES = {
-        'default': {
-            'BACKEND': 'django_redis.cache.RedisCache',
-            'LOCATION': REDIS_URL,
-            'OPTIONS': {'CLIENT_CLASS': 'django_redis.client.DefaultClient'},
-            'KEY_PREFIX': 'nexora',
+    REDIS_URL = os.environ.get('REDIS_URL', '').strip()
+    if REDIS_URL:
+        CACHES = {
+            'default': {
+                'BACKEND': 'django_redis.cache.RedisCache',
+                'LOCATION': REDIS_URL,
+                'OPTIONS': {'CLIENT_CLASS': 'django_redis.client.DefaultClient'},
+                'KEY_PREFIX': 'nexora',
+            }
         }
-    }
+    else:
+        CACHES = {
+            'default': {
+                'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+                'LOCATION': 'nexora-production-cache',
+            }
+        }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
