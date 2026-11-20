@@ -1,8 +1,10 @@
-name: CI
+name: CI/CD
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
 
 jobs:
   test:
@@ -27,7 +29,7 @@ jobs:
     env:
       DJANGO_SECRET_KEY: ci-only-secret-that-is-long-enough-for-security-validation-2026
       DJANGO_DEBUG: 'false'
-      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver,.onrender.com
       POSTGRES_DB: saas_platform
       POSTGRES_USER: saas_app
       POSTGRES_PASSWORD: test-password
@@ -44,3 +46,23 @@ jobs:
       - run: python manage.py makemigrations --check --dry-run
       - run: python manage.py check --deploy
       - run: python manage.py test
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+      url: https://nexora-bppe.onrender.com
+    steps:
+      - name: Trigger Render Deploy Hook
+        env:
+          RENDER_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$RENDER_HOOK" ]; then
+            echo "Calling Render deploy hook..."
+            curl -f -X POST "$RENDER_HOOK"
+            echo "Render deployment triggered successfully!"
+          else
+            echo "Notice: RENDER_DEPLOY_HOOK_URL secret not set. Skipping webhook trigger, but registered deployment on GitHub."
+          fi
