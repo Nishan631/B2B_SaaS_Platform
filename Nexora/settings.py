@@ -125,10 +125,10 @@ if USE_SQLITE:
         }
     }
 else:
-    db_url = os.environ.get('DATABASE_URL')
+    db_url = os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_URL') or os.environ.get('DB_URL')
     if db_url:
         from urllib.parse import urlparse, unquote
-        parsed = urlparse(db_url)
+        parsed = urlparse(db_url.strip().strip("'").strip('"'))
         pg_name = parsed.path.lstrip('/')
         pg_user = unquote(parsed.username) if parsed.username else ''
         pg_password = unquote(parsed.password) if parsed.password else ''
@@ -140,6 +140,9 @@ else:
         pg_password = os.environ.get('POSTGRES_PASSWORD', '')
         pg_host = os.environ.get('POSTGRES_HOST', '127.0.0.1')
         pg_port = os.environ.get('POSTGRES_PORT', '5432')
+
+    if not DEBUG and not TESTING and pg_host == '127.0.0.1' and not USE_SQLITE:
+        print("[DEPLOYMENT CONFIG WARNING] DATABASE_URL is not set! Ensure DATABASE_URL is added in Render -> Web Service -> Environment.")
 
     DATABASES = {
         'default': {
