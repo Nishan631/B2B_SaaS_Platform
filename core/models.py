@@ -88,10 +88,16 @@ class ApiKey(models.Model):
     last_used_at = models.DateTimeField(blank=True, null=True)
     revoked_at = models.DateTimeField(blank=True, null=True)
 
+    objects = TenantManager()
+    unscoped_objects = models.Manager()
+
+    def __str__(self):
+        return f'{self.name} ({self.prefix}…) · {self.tenant.name}'
+
     @classmethod
     def issue(cls, tenant, name):
         secret = secrets.token_urlsafe(32)
         raw_key = f'nxr_{secret}'
-        return raw_key, cls.objects.create(
+        return raw_key, cls.unscoped_objects.create(
             tenant=tenant, name=name, prefix=raw_key[:12], key_hash=hashlib.sha256(raw_key.encode()).hexdigest()
         )

@@ -24,6 +24,23 @@ Browser / REST client
 
 ## Local setup
 
+### Option A: Quickstart with SQLite (No Docker required)
+
+1. Ensure `.env` exists (created from `.env.example`).
+2. Set `USE_SQLITE=true` in `.env`.
+3. Apply migrations and start the server:
+
+```powershell
+python manage.py migrate
+python manage.py runserver
+```
+
+Open `http://localhost:8000` to register your workspace.
+
+---
+
+### Option B: Full Stack with Docker (PostgreSQL + Redis + RLS)
+
 Docker Desktop must be running. From the project root:
 
 ```powershell

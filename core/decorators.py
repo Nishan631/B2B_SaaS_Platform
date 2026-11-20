@@ -10,7 +10,13 @@ def require_workspace_role(*roles):
     def decorator(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
-            if TenantMembership.objects.filter(user=request.user, tenant_id=request.user.tenant_id, role__in=roles).exists():
+            if (
+                request.user.is_authenticated
+                and getattr(request.user, 'tenant_id', None)
+                and TenantMembership.objects.filter(
+                    user=request.user, tenant_id=request.user.tenant_id, role__in=roles
+                ).exists()
+            ):
                 return view(request, *args, **kwargs)
             messages.error(request, 'Your workspace role does not allow this action.')
             return redirect('dashboard')

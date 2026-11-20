@@ -1,5 +1,5 @@
 """
-WSGI config for B2B_SaaS_Platform project.
+WSGI config for Nexora project.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 
@@ -11,6 +11,6 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'B2B_SaaS_Platform.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'Nexora.settings')
 
 application = get_wsgi_application()

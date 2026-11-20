@@ -1,5 +1,5 @@
 """
-ASGI config for B2B_SaaS_Platform project.
+ASGI config for Nexora project.
 
 It exposes the ASGI callable as a module-level variable named ``application``.
 
@@ -11,6 +11,6 @@ import os
 
 from django.core.asgi import get_asgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'B2B_SaaS_Platform.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'Nexora.settings')
 
 application = get_asgi_application()

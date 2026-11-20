@@ -3,7 +3,7 @@ services:
     name: nexora
     runtime: docker
     healthCheckPath: /healthz/
-    dockerCommand: gunicorn B2B_SaaS_Platform.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --access-logfile -
+    dockerCommand: gunicorn Nexora.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --access-logfile -
     envVars:
       - key: DJANGO_DEBUG
         value: "false"

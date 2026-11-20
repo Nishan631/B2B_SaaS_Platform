@@ -64,20 +64,36 @@ class StripeWebhookView(APIView):
         event_type = event['type']
         data_object = event['data']['object']
         customer_id = data_object.get('customer')
+        if isinstance(customer_id, dict):
+            customer_id = customer_id.get('id')
 
         try:
             with transaction.atomic():
                 StripeEvent.objects.create(stripe_event_id=event_id, event_type=event_type)
+                tenant = None
                 if customer_id:
                     tenant = Tenant.objects.filter(stripe_customer_id=customer_id).first()
-                    if tenant:
-                        if event_type in ['customer.subscription.created', 'customer.subscription.updated']:
-                            tenant.plan_tier = 'paid' if data_object.get('status') in {'active', 'trialing'} else 'trial'
-                            tenant.stripe_subscription_id = data_object.get('id', '')
-                            tenant.subscription_status = data_object.get('status', '')
-                        elif event_type == 'customer.subscription.deleted':
-                            tenant.plan_tier = 'trial'
-                            tenant.subscription_status = 'canceled'
+                if not tenant and data_object.get('client_reference_id'):
+                    tenant = Tenant.objects.filter(id=data_object.get('client_reference_id')).first()
+                if not tenant and data_object.get('metadata', {}).get('tenant_id'):
+                    tenant = Tenant.objects.filter(id=data_object['metadata']['tenant_id']).first()
+
+                if tenant:
+                    if event_type in ['customer.subscription.created', 'customer.subscription.updated']:
+                        status = data_object.get('status', '')
+                        tenant.plan_tier = 'paid' if status in {'active', 'trialing'} else 'trial'
+                        tenant.stripe_subscription_id = data_object.get('id', '')
+                        tenant.subscription_status = status
+                        tenant.save(update_fields=['plan_tier', 'stripe_subscription_id', 'subscription_status'])
+                    elif event_type == 'customer.subscription.deleted':
+                        tenant.plan_tier = 'trial'
+                        tenant.subscription_status = 'canceled'
+                        tenant.save(update_fields=['plan_tier', 'subscription_status'])
+                    elif event_type == 'checkout.session.completed':
+                        tenant.plan_tier = 'paid'
+                        if data_object.get('subscription'):
+                            tenant.stripe_subscription_id = str(data_object.get('subscription'))
+                        tenant.subscription_status = 'active'
                         tenant.save(update_fields=['plan_tier', 'stripe_subscription_id', 'subscription_status'])
         except IntegrityError:
             # Stripe retries are expected; a duplicate event has already been safely applied.
@@ -86,17 +102,24 @@ class StripeWebhookView(APIView):
         return HttpResponse(status=200)
 
 def login_view(request):
+    if request.user.is_authenticated:
+        return redirect("dashboard")
     if request.method == "POST":
         u = request.POST.get("username")
         p = request.POST.get("password")
         user = authenticate(request, username=u, password=p)
         if user is not None:
             login(request, user)
+            next_url = request.POST.get("next") or request.GET.get("next")
+            if next_url and next_url.startswith("/"):
+                return redirect(next_url)
             return redirect("dashboard")
         return render(request, "login.html", {"error": "Invalid combination entry credentials."})
     return render(request, "login.html")
 
 def register_view(request):
+    if request.user.is_authenticated:
+        return redirect("dashboard")
     if request.method == "POST":
         t_name = request.POST.get("tenant_name")
         u = request.POST.get("username")
@@ -114,7 +137,7 @@ def register_view(request):
         except IntegrityError:
             return render(request, 'register.html', {'error': 'That company name or username is already in use.'})
         
-        login(request, new_user)
+        login(request, new_user, backend='django.contrib.auth.backends.ModelBackend')
         return redirect("dashboard")
     return render(request, "register.html")
 
@@ -124,6 +147,14 @@ def logout_view(request):
 
 @login_required(login_url="login_view")
 def dashboard(request):
+    if not request.user.tenant:
+        membership = request.user.memberships.select_related('tenant').first()
+        if membership:
+            request.user.tenant = membership.tenant
+            request.user.save(update_fields=['tenant'])
+        else:
+            return redirect("register_view")
+
     # Use our standard tenant-aware objects manager layer to pull metrics safely
     metrics = AnalyticsMetric.objects.all().order_by('-timestamp')
     
@@ -143,10 +174,19 @@ def add_metric(request):
                 messages.success(request, 'Metric recorded successfully.')
             except ValueError:
                 messages.error(request, 'Enter a valid numeric value.')
+            except IntegrityError:
+                messages.error(request, 'A metric with this name and timestamp already exists.')
     return redirect("dashboard")
 
 @login_required(login_url="login_view")
 def billing(request):
+    if not request.user.tenant:
+        membership = request.user.memberships.select_related('tenant').first()
+        if membership:
+            request.user.tenant = membership.tenant
+            request.user.save(update_fields=['tenant'])
+        else:
+            return redirect("register_view")
     return render(request, "billing.html")
 
 # Mock Stripe Upgrade Session Controller Engine
@@ -155,6 +195,8 @@ def billing(request):
 def create_checkout_session(request):
     if request.method == "POST":
         tenant = request.user.tenant
+        if not tenant:
+            return redirect("register_view")
         if settings.BILLING_DEMO_MODE:
             tenant.plan_tier = 'paid'
             tenant.save(update_fields=['plan_tier'])
@@ -164,11 +206,13 @@ def create_checkout_session(request):
         else:
             stripe.api_key = settings.STRIPE_SECRET_KEY
             if not tenant.stripe_customer_id:
-                customer = stripe.Customer.create(name=tenant.name, metadata={'tenant_id': tenant.id})
+                customer = stripe.Customer.create(name=tenant.name, metadata={'tenant_id': str(tenant.id)})
                 tenant.stripe_customer_id = customer.id
                 tenant.save(update_fields=['stripe_customer_id'])
             session = stripe.checkout.Session.create(
                 customer=tenant.stripe_customer_id,
+                client_reference_id=str(tenant.id),
+                metadata={'tenant_id': str(tenant.id)},
                 mode='subscription', line_items=[{'price': settings.STRIPE_PRICE_ID, 'quantity': 1}],
                 success_url=f'{settings.SITE_URL}/workspace/billing/?checkout=success',
                 cancel_url=f'{settings.SITE_URL}/workspace/billing/?checkout=cancelled',
@@ -181,6 +225,8 @@ def create_checkout_session(request):
 @require_workspace_role(TenantMembership.Role.OWNER, TenantMembership.Role.ADMIN)
 def create_billing_portal_session(request):
     tenant = request.user.tenant
+    if not tenant:
+        return redirect("register_view")
     if request.method != 'POST':
         return redirect('billing')
     if settings.BILLING_DEMO_MODE:
@@ -204,6 +250,8 @@ def create_billing_portal_session(request):
 @require_workspace_role(TenantMembership.Role.OWNER, TenantMembership.Role.ADMIN)
 def members(request):
     tenant = request.user.tenant
+    if not tenant:
+        return redirect("register_view")
     assignable_roles = [TenantMembership.Role.ADMIN, TenantMembership.Role.ANALYST, TenantMembership.Role.VIEWER]
     if request.method == 'POST':
         username = request.POST.get('username', '').strip()
@@ -214,8 +262,15 @@ def members(request):
         elif role not in assignable_roles:
             messages.error(request, 'Only an existing owner can assign admin, analyst, or viewer roles.')
         else:
-            TenantMembership.objects.update_or_create(tenant=tenant, user=target, defaults={'role': role})
-            messages.success(request, f'{username} now has the {role} role.')
+            target_membership = TenantMembership.objects.filter(tenant=tenant, user=target).first()
+            if target_membership and target_membership.role == TenantMembership.Role.OWNER and target != request.user:
+                messages.error(request, 'The owner role cannot be modified.')
+            else:
+                TenantMembership.objects.update_or_create(tenant=tenant, user=target, defaults={'role': role})
+                if target.tenant != tenant:
+                    target.tenant = tenant
+                    target.save(update_fields=['tenant'])
+                messages.success(request, f'{username} now has the {role} role.')
         return redirect('members')
     return render(request, 'members.html', {
         'memberships': tenant.memberships.select_related('user').order_by('role', 'user__username'),
